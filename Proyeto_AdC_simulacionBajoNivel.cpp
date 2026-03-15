@@ -1,4 +1,4 @@
-// =========================================================================
+﻿// =========================================================================
 // SIMULADOR CPU x86 - LISTA EN MEMORIA SIMULADA
 // Proyecto: Arquitectura de Computadoras
 // Modelo Von Neumann - Arquitectura Intel x86
