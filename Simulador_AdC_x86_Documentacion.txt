@@ -1,9 +1,9 @@
-El programa realiza tres operaciones fundamentales:
+El programa realiza cuatro operaciones fundamentales:
     1.- Captura n cantidad de elementos que son enteros proporcionados por el usuario.
-    2.- Almacena los valores en la RAM simulada desde la dirección 0x0100, donde cada entero 
+    2.- Almacena los valores en la RAM simulada desde la dirección 0x0100, donde cada entero
         ocupa 4 bytes consecutivos.
     3.- Muestra todos los indices, almacenado en la RAM.
-    3.- Consulta un elemento específico del arreglo usando su índice.
+    4.- Consulta un elemento específico del arreglo usando su índice.
 
         Codigo de alto nivel:
     |---------------------------------------------------------------------------------------------
@@ -446,9 +446,18 @@ El programa ejecuta instrucciones mediante el ciclo de instrucción:
             1
         El valor se almacena en el registro:
             EAX = 1
+
+        MOV ESP, EBP
+    Libera el espacio. El puntero de la pila vuelve a la base para borrar los datos temporales
+    usados por la funcion.
+
+        POP EBP
+    Restaura el control. Recupera de la pila el valor original de EBP para que el programa
+    principal pueda seguir donde se quedo.
+
         RET
     La direccion de retorno se recupera de la pila y la ejecucion vuelve al programa principal.
-    
+        
     ============================================================================================
     CALCULO DE LA DIRECCION DEL ELEMENTO
     ============================================================================================
