@@ -194,7 +194,8 @@ El programa ejecuta instrucciones mediante el ciclo de instrucción:
     ============================================================================================
     INTERPRETACION DE LA EJECUCION DEL SIMULADOR CPU x86
     ============================================================================================
-    El programa simula la ejecucion de un procesador x86 que almacena valores introducidos por el usuario dentro de una lista en memoria RAM.
+    El programa simula la ejecucion de un procesador x86 que almacena valores introducidos por el 
+    usuario dentro de una lista en memoria RAM.
 
     La zona de memoria reservada para la lista es:
         0x0100 – 0x07FF
