@@ -1,923 +1,748 @@
 El programa realiza cuatro operaciones fundamentales:
-    1.- Captura n cantidad de elementos que son enteros proporcionados por el usuario.
-    2.- Almacena los valores en la RAM simulada desde la dirección 0x0100, donde cada entero
-        ocupa 4 bytes consecutivos.
-    3.- Muestra todos los indices, almacenado en la RAM.
-    4.- Consulta un elemento específico del arreglo usando su índice.
+    1.- Permite al usuario ingresar datos de cualquier tipo (cadenas de caracteres)
+        que quedan almacenados como dato pendiente hasta recibir un comando.
+    2.- Almacena los datos en la RAM simulada a partir de la direccion 0x0310,
+        donde cada elemento ocupa 16 bytes consecutivos (cadena ASCII + terminador 0x00).
+    3.- Muestra todos los elementos almacenados en la lista recorriendo la RAM.
+    4.- Consulta un elemento especifico de la lista usando su indice numerico.
 
-        Codigo de alto nivel:
+    Codigo de alto nivel:
     |---------------------------------------------------------------------------------------------
-    |        #include <iostream>
-    |        using namespace std;
+    |   #include <iostream>
+    |   #include <cstring>
+    |   using namespace std;
     |
-    |        int lista[256]; //
+    |   char lista[256][16];
+    |   int total = 0;
     |
-    |        int interrupcion_teclado() {
-    |            int dato;
-    |            cin >> dato;
-    |            return dato;
-    |        }
+    |   void interrupcion_teclado(char* buffer) {
+    |       cin.getline(buffer, 16);
+    |   }
     |
-    |        int main() {
-    |            int n;
-    |            cout << "Cuantos elementos? ";
-    |            n = interrupcion_teclado();
+    |   int main() {
+    |       char pendiente[16];
+    |       char entrada[16];
+    |       memset(pendiente, 0, sizeof(pendiente));
     |
-    |            for (int i = 0; i < n; i++) {
-    |                cout << "Dato [" << i + 1 << "]: ";
-    |                lista[i] = interrupcion_teclado();
-    |            }
+    |       cout << "COMANDOS: '@'=guardar  '#'=leer  '$'=mostrar todo  '!'=salir\n\n";
     |
-    |            cout << "\nLista completa:\n";
-    |            for (int i = 0; i < n; i++) {
-    |                cout << "[" << i << "] = " << lista[i] << "\n";
-    |            }
+    |       while (true) {
+    |           cout << ">>> ";
+    |           interrupcion_teclado(entrada);
     |
-    |            int idx;
-    |            cout << "\nQue indice consultar? ";
-    |            idx = interrupcion_teclado();
-    |            cout << "Valor en [" << idx << "] = " << lista[idx] << "\n";
+    |           if (strcmp(entrada, "@") == 0) {
+    |               strcpy(lista[total], pendiente);
+    |               total++;
+    |               memset(pendiente, 0, sizeof(pendiente));
     |
-    |            system("pause");
+    |           } else if (strcmp(entrada, "#") == 0) {
+    |               int idx = atoi(pendiente);
+    |               cout << "lista[" << idx << "] = \"" << lista[idx] << "\"\n";
     |
-    |            return 0;
-    |        }
+    |           } else if (strcmp(entrada, "$") == 0) {
+    |               for (int i = 0; i < total; i++)
+    |                   cout << "lista[" << i << "] = \"" << lista[i] << "\"\n";
+    |
+    |           } else if (strcmp(entrada, "!") == 0) {
+    |               break;
+    |
+    |           } else {
+    |               strcpy(pendiente, entrada);
+    |           }
+    |       }
+    |
+    |       system("pause");
+    |       return 0;
+    |   }
     |---------------------------------------------------------------------------------------------
 
-Este programa implementa un simulador simplificado de una CPU basada en arquitectura
-x86, siguiendo el modelo de John von Neumann.
-El simulador representa los componentes básicos de una computadora:
+Este programa implementa un simulador de una CPU basada en arquitectura x86,
+siguiendo el modelo de John von Neumann.
+El simulador representa los componentes basicos de una computadora:
     CPU
     Memoria RAM
     Registros
     Stack (pila)
-    Unidad de control
+    Unidad de Control
     ALU
-El programa ejecuta instrucciones mediante el ciclo de instrucción:
-    Fetch (buscar instrucción)
+El programa ejecuta instrucciones mediante el ciclo de instruccion:
+    Fetch  (buscar instruccion)
     Decode (decodificar)
     Execute (ejecutar)
-  
+
     |---------------------------------------------------------------------------------------------
     | DIRECCION | INSTRUCCION         | INTERPRETACION
     | ============================================================================================
-    |       Paso 1: Leer N (cuantos elementos ingresara el usuario)
+    |   PROGRAMA PRINCIPAL (main) --- inicia en 0x8000
+    |   BUCLE PRINCIPAL: Lee la entrada del usuario y detecta si es comando o dato.
     | ============================================================================================
-    |  0x0800   | CALL 0x0A00         | Llama al handler de teclado para leer N. se guarda en EAX.
+    |  0x8000   | CALL 0xA000         | Llama a INT_TECLADO para leer la entrada del usuario.
     |           |                     | CALL = PUSH(dir_retorno) + JMP(destino).
-    |           |                     |  -> ESP -= 4; (Para hacerle espacio a la pila).
-    |           |                     |  -> RAM[ESP] = 0x0801 (dir. de la sig instrucción).
-    |           |                     |  -> EIP salta a 0x0A00.
+    |           |                     |  -> ESP -= 4.
+    |           |                     |  -> RAM[ESP] = 0x8001 (dir. de la sig instruccion).
+    |           |                     |  -> EIP salta a 0xA000.
     |  -------------------------------------------------------------------------------------------
-    |  0x0801   | MOV ECX, EAX        | ECX = EAX = N. 
-    |           |                     | ECX se usara como contador del bucle de captura.
-    |           |                     | Cada iteracion lo decrementa hasta llegar a 0.
+    |  0x8001   | MOV EAX,[BUF]       | EAX = RAM[BUFFER_BASE].
+    |           |                     | Lee el primer caracter de la entrada via MAR/MBR.
+    |           |                     | Este caracter determina si la entrada es un comando
+    |           |                     | ('@', '#', '$', '!') o un dato a guardar como pendiente.
+    |           |                     |  -> MAR = 0x0110 (BUFFER_BASE).
+    |           |                     |  -> MBR = RAM[MAR].
+    |           |                     |  -> EAX = MBR.
     |  -------------------------------------------------------------------------------------------
-    |  0x0802   | MOV EDX, EAX        | EDX = EAX = N. Copia de seguridad de N.
-    |           |                     | ECX se destruye por el bucle; EDX lo preserva
-    |           |                     | para reiniciar el contador en el bucle de muestra.
+    |  0x8002   | CMP EAX,'@'         | Compara EAX con '@' (CMD_SAVE = 0x40).
+    |           |                     | La ALU hace EAX - 0x40 internamente.
+    |           |                     | ZF = 1 si son iguales (resultado == 0).
+    |           |                     | ZF = 0 si no son iguales.
     |  -------------------------------------------------------------------------------------------
-    |  0x0803   | MOV EBX, 0x0100     | EBX = 0x0100. Apunta al primer slot de la lista.
-    |           |                     | Zona de lista: 0x0100 - 0x07FF (max 447 enteros).
-    |           |                     |  -> RAM[EBX] = dato1   <- Escribe en 0x0100.
-    |           |                     |  -> EBX += 4    <- Avanza a 0x0104.
-    |           |                     | Cada entero ocupa 4 bytes (x86 32-bits = 4 bytes).
-    | ============================================================================================
-    |       INICIO DEL BUCLE DE CAPTURA: LOOP_STORE
-    | ============================================================================================
-    |  0x0804   | CALL 0x0A00         | Lee el siguiente entero del teclado. <- LOOP_STORE
-    |           |                     |  -> ESP -= 4;
-    |           |                     |  -> RAM[ESP] = 0x0805 (dir. de sig instruccion).
-    |           |                     |  -> EAX = dato ingresado por el usuario.
-    |           |                     |  -> EIP salta a 0x0A00.
+    |  0x8003   | JE 0x8020           | Si ZF == 1 (es '@'): EIP = 0x8020 (BLOQUE SAVE).
+    |           |                     | Si ZF == 0 (no es '@'): EIP = 0x8004 (sigue comparando).
     |  -------------------------------------------------------------------------------------------
-    |  0x0805   | MOV [EBX], EAX      | RAM[EBX] = EAX. 
-    |           |                     | Escribe el dato en la posicion actual de la lista.
-    |           |                     | EBX es el puntero movil que recorre la RAM.
+    |  0x8004   | CMP EAX,'#'         | Compara EAX con '#' (CMD_READ = 0x23).
     |  -------------------------------------------------------------------------------------------
-    |  0x0806   | ADD EBX, 4          | EBX = EBX + 4.
-    |           |                     | Avanza al siguiente slot.
+    |  0x8005   | JE 0x8030           | Si ZF == 1 (es '#'): EIP = 0x8030 (BLOQUE READ).
     |  -------------------------------------------------------------------------------------------
-    |  0x0807   | DEC ECX             | ECX = ECX - 1.
-    |           |                     | La ALU decrementa y actualiza el Registro de Banderas.
-    |           |                     | ZF = 1 SOLO si el resultado es exactamente 0.
-    |           |                     | ZF = 0 en cualquier otro caso.
-    |  ------------------------------------------------------------------------------------------
-    |  0x0808   | JNZ 0x0804          | Jump if Not Zero. La UC lee el Zero Flag (ZF).
-    |           |                     | Si ZF == 0 (ECX no llego a 0): EIP = 0x0804 (repite).
-    |           |                     | Si ZF == 1 (ECX llego a 0)  : EIP = 0x0809 (fin bucle).
+    |  0x8006   | CMP EAX,'$'         | Compara EAX con '$' (CMD_SHOW = 0x24).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8007   | JE 0x8040           | Si ZF == 1 (es '$'): EIP = 0x8040 (BLOQUE SHOW ALL).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8008   | CMP EAX,'!'         | Compara EAX con '!' (CMD_EXIT = 0x21).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8009   | JE 0x8060           | Si ZF == 1 (es '!'): EIP = 0x8060 (BLOQUE EXIT).
+    |  -------------------------------------------------------------------------------------------
+    |  0x800A   | MOV ESI,0x0110      | ESI = BUFFER_BASE.
+    |           |                     | Apunta al inicio del buffer de entrada (fuente de la copia).
+    |           |                     | ESI es el Source Index: registro dedicado a punteros fuente
+    |           |                     | en operaciones de cadenas de la arquitectura x86.
+    |  -------------------------------------------------------------------------------------------
+    |  0x800B   | MOV EDI,0x0210      | EDI = PENDING_BASE.
+    |           |                     | Apunta al inicio del buffer pendiente (destino de la copia).
+    |           |                     | EDI es el Destination Index: registro dedicado a punteros
+    |           |                     | destino en operaciones de cadenas de la arquitectura x86.
+    |  -------------------------------------------------------------------------------------------
+    |  0x800C   | CALL 0xB000         | Llama a INT_MEMCPY para copiar BUFFER -> PENDING.
+    |           |                     | El dato queda en PENDING esperando el comando '@' o '#'.
+    |           |                     |  -> RAM[ESP] = 0x800D (dir. de retorno).
+    |           |                     |  -> EIP = 0xB000.
+    |  -------------------------------------------------------------------------------------------
+    |  0x800D   | JMP 0x8000          | Salto incondicional al inicio del bucle principal.
+    |           |                     | El programa vuelve a esperar la siguiente entrada.
     | ============================================================================================
-    |         FIN DEL BUCLE DE CAPTURA
-    |         MOSTRAR LISTA COMPLETA: LOOP_SHOW
+    |   BLOQUE SAVE --- 0x8020
+    |   Guarda el dato pendiente en la siguiente celda libre de la lista.
+    |   EBX apunta siempre a la siguiente celda libre (se inicializa en 0x0310
+    |   y avanza 0x10 bytes por cada elemento guardado).
+    |   EDX lleva la cuenta de elementos guardados.
     | ============================================================================================
-    |  0x0809   | MOV EBX, 0x0100     | EBX = 0x0100. Reinicia puntero al inicio de la lista.
-    |---------------------------------------------------------------------------------------------
-    |  0x080A   | MOV ECX, EDX        | ECX = EDX = N. Restaura el contador desde la copia.
-    |           |                     | ECX fue destruido en LOOP_STORE; EDX lo tenia guardado.
+    |  0x8020   | MOV ESI,0x0210      | ESI = PENDING_BASE (fuente: el dato pendiente).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8021   | MOV EDI,EBX         | EDI = EBX (destino: la siguiente celda libre de la lista).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8022   | CALL 0xB000         | Llama a INT_MEMCPY para copiar PENDING -> RAM[EBX].
+    |           |                     | El dato queda guardado en la lista en RAM.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8023   | ADD EBX,0x10        | EBX = EBX + 16. Avanza al siguiente slot libre.
+    |           |                     | Cada elemento ocupa 16 bytes (15 chars + terminador 0x00).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8024   | ADD EDX,1           | EDX = EDX + 1. Incrementa el contador de elementos.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8025   | MOV [PEND],0        | RAM[PENDING_BASE] = 0x00.
+    |           |                     | Limpia PENDING escribiendo el terminador en su primera
+    |           |                     | posicion via MAR/MBR. Evita que el mismo dato se guarde
+    |           |                     | dos veces si se presiona '@' de nuevo sin ingresar nada.
+    |           |                     |  -> MAR = 0x0210 (PENDING_BASE).
+    |           |                     |  -> MBR = 0.
+    |           |                     |  -> RAM[MAR] = MBR.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8026   | JMP 0x8000          | Regresa al bucle principal.
     | ============================================================================================
-    |       INICIO DEL BUCLE DE MUESTRA: LOOP_SHOW
-    | ============================================================================================ 
-    |  0x080B   | MOV EAX, [EBX]      | EAX = RAM[EBX]. Lee el elemento actual. <- LOOP_SHOW
-    |           |                     | La CPU calcula la direccion fisica desde EBX directamente.
-    |---------------------------------------------------------------------------------------------
-    |  0x080C   | ADD EBX, 4          | EBX = EBX + 4. Avanza al siguiente elemento.
-    |---------------------------------------------------------------------------------------------
-    |  0x080D   | DEC ECX             | ECX = ECX - 1. Actualiza ZF igual que en LOOP_STORE.
-    |---------------------------------------------------------------------------------------------
-    |  0x080E   | JNZ 0x080B          | Si ZF == 0: EIP = 0x080B (muestra el siguiente elemento).
-    |           |                     | Si ZF == 1: EIP = 0x080F (todos mostrados, pasa a consulta).
+    |   BLOQUE READ --- 0x8030
+    |   Convierte el dato pendiente (cadena numerica) a entero via PARSE_NUM inline.
+    |   Calcula la direccion del elemento: LIST_BASE + (indice * ELEM_SIZE).
+    |   Muestra el elemento via INT_PRINT.
+    |
+    |   PARSE_NUM (loop inline en 0x8032 - 0x8038):
+    |   ECX acumula el numero. Por cada digito en PENDING:
+    |     EAX = char leido de RAM[ESI]
+    |     Si EAX == 0 (terminador): fin del loop.
+    |     EAX = EAX - 48 ('0') = valor del digito.
+    |     ECX = ECX * 10 (desplaza el acumulador una posicion decimal).
+    |     ECX = ECX + EAX (agrega el digito).
+    |     ESI += 1 (avanza al siguiente char).
     | ============================================================================================
-    |       FIN DEL BUCLE DE MUESTRA 
-    |       CONSULTA POR INDICE DIRECTO 
+    |  0x8030   | MOV ECX,0           | ECX = 0. Inicializa el acumulador del numero.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8031   | MOV ESI,0x0210      | ESI = PENDING_BASE. Puntero al inicio de la cadena.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8032   | MOV EAX,[ESI]       | EAX = RAM[ESI]. Lee el char actual via MAR/MBR.  <- PARSE_LOOP
+    |           |                     |  -> MAR = ESI.
+    |           |                     |  -> MBR = RAM[MAR].
+    |           |                     |  -> EAX = MBR.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8033   | CMP EAX,0           | Compara EAX con el terminador 0x00.
+    |           |                     | ZF = 1 si es el fin de la cadena.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8034   | JE 0x8039           | Si ZF == 1 (terminador): fin del PARSE_LOOP -> 0x8039.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8035   | ADD EAX,-48         | EAX = EAX - 48.
+    |           |                     | Convierte el caracter ASCII al valor del digito.
+    |           |                     | Ejemplo: ASCII '3' = 51, 51 - 48 = 3.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8036   | MUL ECX,10          | ECX = ECX * 10.
+    |           |                     | Desplaza el acumulador una posicion decimal hacia la
+    |           |                     | izquierda para hacer espacio al nuevo digito.
+    |           |                     | Ejemplo: si ECX = 1 (del digito anterior), ECX = 10.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8037   | ADD ECX,EAX         | ECX = ECX + EAX. Agrega el digito actual al acumulador.
+    |           |                     | Ejemplo: ECX = 10, EAX = 3 -> ECX = 13.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8038   | ADD ESI,1           | ESI += 1. Avanza al siguiente caracter de PENDING.
+    |           |                     | JMP implicito: regresa a 0x8032 (PARSE_LOOP).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8039   | MOV EAX,0x10        | EAX = ELEM_SIZE (16). Carga el tamano de slot.
+    |           |                     | Necesario porque MUL en x86 usa EAX como operando
+    |           |                     | implicito siempre: "MUL reg" = EAX = EAX * reg.
+    |  -------------------------------------------------------------------------------------------
+    |  0x803A   | MUL EAX,ECX         | EAX = EAX * ECX = 16 * indice = offset en bytes.
+    |           |                     | Calcula cuantos bytes hay desde LIST_BASE hasta
+    |           |                     | el elemento pedido.
+    |           |                     | Ejemplo: indice 2 -> EAX = 16 * 2 = 32 = 0x20.
+    |  -------------------------------------------------------------------------------------------
+    |  0x803B   | ADD EAX,0x0310      | EAX = LIST_BASE + offset = direccion exacta del elemento.
+    |           |                     | Ejemplo: indice 2 -> EAX = 0x0310 + 0x20 = 0x0330.
+    |  -------------------------------------------------------------------------------------------
+    |  0x803C   | CALL 0xC000         | Llama a INT_PRINT para mostrar el elemento en RAM[EAX].
+    |           |                     |  -> RAM[ESP] = 0x803D (dir. de retorno).
+    |           |                     |  -> EIP = 0xC000.
+    |  -------------------------------------------------------------------------------------------
+    |  0x803D   | JMP 0x8000          | Regresa al bucle principal.
     | ============================================================================================
-    |  0x080F   | CALL 0x0A00         | Lee el indice a consultar.
-    |           |                     | EAX = indice ingresado. Retorno -> 0x0810.
-    |---------------------------------------------------------------------------------------------
-    |  0x0810   | MOV EDX, EAX        | EDX = indice. Lo guarda mientras EAX se usa para MUL.
-    |---------------------------------------------------------------------------------------------
-    |  0x0811   | MOV EBX, 0x0100     | EBX = 0x0100. Restaura la direccion base de la lista.
-    |---------------------------------------------------------------------------------------------
-    |  0x0812   | MOV EAX, 4          | EAX = 4. Carga el tamano de slot.
-    |           |                     | MUL en x86 usa EAX como operando implicito siempre.
-    |           |                     | No se puede elegir otro registro como destino de MUL.
-    |---------------------------------------------------------------------------------------------
-    |  0x0813   | MUL EDX             | EAX = EAX * EDX = 4 * indice = offset en bytes.
-    |           |                     | Ejemplo: indice 2 -> EAX = 8.
-    |           |                     | La CPU necesita la posicion en bytes, no en slots.
-    |---------------------------------------------------------------------------------------------
-    |  0x0814   | ADD EBX, EAX        | EBX = 0x0100 + offset = direccion exacta del elemento.
-    |           |                     | Ejemplo: indice 2 -> EBX = 0x0100 + 8 = 0x0108.
-    |---------------------------------------------------------------------------------------------
-    |  0x0815   | MOV EAX, [EBX]      | EAX = RAM[EBX]. Lee el elemento consultado.
-    |           |                     | EAX = lista[indice]. Elemento Consultado en EAX.
-    |---------------------------------------------------------------------------------------------
-    |  0x0816   | HLT                 | Halt. Detiene el ciclo de instruccion.
-    |           |                     | HLT_flag = true. El programa termina.
-    |  ============================================================================================
-    |  HANDLER DE INTERRUPCION: INT_READ --- EIP = 0x0A00
-    |  Simula la rutina de servicio de interrupcion del teclado (INT 21h / syscall).
-    |  Convencion x86: prologo PUSH EBP / MOV EBP,ESP
-    |                  epilogo MOV ESP,EBP / POP EBP / RET
-    |  Resultado de la funcion siempre en EAX (convencion de llamada x86).
-    |  ============================================================================================
-    |  0x0A00   | PUSH EBP             |  -> ESP -= 4; 
-    |           |                      |  -> RAM[ESP] = EBP.
-    |           |                      | Guarda el Base Pointer del llamador en la pila.
-    |           |                      | Sin este PUSH, al retornar EBP del llamador quedaria corrupto.
-    |---------------------------------------------------------------------------------------------
-    |  0x0A01   | MOV EBP, ESP         |  -> EBP = ESP. Ancla el marco de pila del handler.
-    |           |                      | Variables locales se referenciarian como [EBP-4], [EBP-8].
-    |           |                      | Este handler no tiene locales, pero el prologo se respeta.
-    |---------------------------------------------------------------------------------------------
-    |  0x0A02   | INT LEER_TECLADO     | INTERRUPCION DE HARDWARE. El periferico entrega dato a EAX.
-    |           |                      | Simula: la CPU pausa, el controlador de teclado escribe
-    |           |                      | el dato en el bus de datos, la CPU lo captura en EAX.
-    |           |                      | Equivale a INT 21h (DOS) o syscall read (Linux).
-    |---------------------------------------------------------------------------------------------
-    |  0x0A03   | MOV ESP, EBP         | ESP = EBP. Destruye variables locales (si existieran).
-    |           |                      | Restaura ESP al punto de inicio del marco de pila.
-    |---------------------------------------------------------------------------------------------
-    |  0x0A04   | POP EBP              |  -> EBP = RAM[ESP];
-    |           |                      |  -> ESP += 4.
-    |           |                      | Restaura el EBP del llamador desde la pila.
-    |           |                      | El llamador (main) recupera su propio EBP intacto.
-    |---------------------------------------------------------------------------------------------
-    |  0x0A05   | RET                  |  -> EIP = RAM[ESP];
-    |           |                      |  -> ESP += 4.
-    |           |                      | Saca la dir. de retorno del stack e inyecta en EIP.
-    |           |                      | EIP vuelve a 0x0801, 0x0805 o 0x0810 segun quien llamo.
-    |---------------------------------------------------------------------------------------------
+    |   BLOQUE SHOW ALL --- 0x8040
+    |   Muestra todos los elementos de la lista.
+    |   ECX = copia de EDX (para no destruir el contador original).
+    |   EAX = puntero de lectura que avanza ELEM_SIZE por iteracion.
+    | ============================================================================================
+    |  0x8040   | MOV ECX,EDX         | ECX = EDX. Copia el contador de elementos al bucle.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8041   | MOV EAX,0x0310      | EAX = LIST_BASE. Puntero de lectura al inicio de la lista.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8042   | CMP ECX,0           | Compara ECX con 0.  <- SHOW_LOOP
+    |           |                     | ZF = 1 si lista vacia o se terminaron los elementos.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8043   | JE 0x8048           | Si ZF == 1 (lista vacia o fin): salta a 0x8048.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8044   | CALL 0xC000         | Llama a INT_PRINT para mostrar el elemento en RAM[EAX].
+    |  -------------------------------------------------------------------------------------------
+    |  0x8045   | ADD EAX,0x10        | EAX += 16. Avanza al siguiente elemento de la lista.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8046   | DEC ECX             | ECX--. Un elemento menos por mostrar.
+    |           |                     | La ALU actualiza ZF: ZF = 1 SOLO si ECX llego a 0.
+    |  -------------------------------------------------------------------------------------------
+    |  0x8047   | JNZ 0x8042          | Si ZF == 0 (ECX no llego a 0): EIP = 0x8042 (repite).
+    |           |                     | Si ZF == 1 (ECX llego a 0)   : EIP = 0x8048 (fin bucle).
+    |  -------------------------------------------------------------------------------------------
+    |  0x8048   | JMP 0x8000          | Regresa al bucle principal.
+    | ============================================================================================
+    |   BLOQUE EXIT --- 0x8060
+    | ============================================================================================
+    |  0x8060   | HLT                 | Halt. Detiene el ciclo de instruccion.
+    |           |                     | HLT_flag = true. El while principal deja de iterar.
+    |           |                     | El programa termina.
+    | ============================================================================================
+    |   INT_TECLADO --- 0xA000
+    |   Rutina de Servicio de Interrupcion del teclado (equivalente a INT 21h en DOS
+    |   o syscall read en Linux).
+    |   Por cada caracter tecleado:
+    |     MAR = CHAR_MAP_BASE + ascii_del_char  (apunta al char en la tabla de mapeo)
+    |     MBR = RAM[MAR]                        (bus de datos copia el valor)
+    |     RAM[BUFFER_BASE + i] = MBR            (deposita el char en el buffer)
+    |   Resultado: cadena en RAM[BUFFER_BASE] terminada en 0x00.
+    |   Convencion x86: prologo PUSH EBP / MOV EBP,ESP
+    |                   epilogo MOV ESP,EBP / POP EBP / RET
+    | ============================================================================================
+    |  0xA000   | PUSH EBP            |  -> ESP -= 4.
+    |           |                     |  -> MAR = ESP, MBR = EBP, RAM[MAR] = MBR.
+    |           |                     | Guarda el EBP del llamador en la pila.
+    |           |                     | Sin este PUSH, al retornar EBP del llamador quedaria corrupto.
+    |  -------------------------------------------------------------------------------------------
+    |  0xA001   | MOV EBP,ESP         | EBP = ESP. Establece el nuevo marco de pila.
+    |           |                     | Variables locales se referenciarian como [EBP-4], [EBP-8].
+    |           |                     | Este handler no tiene locales, pero el prologo se respeta.
+    |  -------------------------------------------------------------------------------------------
+    |  0xA002   | INT LEER_TECLADO    | INTERRUPCION DE HARDWARE. El periferico entrega la cadena.
+    |           |                     | La CPU pausa su flujo normal.
+    |           |                     | El controlador de teclado escribe en el bus de datos.
+    |           |                     | Por cada caracter, la UC busca su valor en CHAR_MAP via
+    |           |                     | MAR y MBR, y lo deposita en BUFFER_BASE:
+    |           |                     |   MAR = CHAR_MAP_BASE + ascii_del_char.
+    |           |                     |   MBR = RAM[MAR].
+    |           |                     |   RAM[BUFFER_BASE + i] = MBR.
+    |           |                     | Al final escribe el terminador 0x00.
+    |  -------------------------------------------------------------------------------------------
+    |  0xA003   | MOV ESP,EBP         | ESP = EBP. Epilogo: destruye variables locales (si hubiera).
+    |  -------------------------------------------------------------------------------------------
+    |  0xA004   | POP EBP             |  -> MAR = ESP, MBR = RAM[MAR], EBP = MBR, ESP += 4.
+    |           |                     | Restaura el EBP del llamador desde la pila.
+    |  -------------------------------------------------------------------------------------------
+    |  0xA005   | RET                 |  -> MAR = ESP, MBR = RAM[MAR], EIP = MBR, ESP += 4.
+    |           |                     | Saca la dir. de retorno del stack e inyecta en EIP.
+    |           |                     | EIP vuelve siempre a 0x8001.
+    | ============================================================================================
+    |   INT_MEMCPY --- 0xB000
+    |   Copia ELEM_SIZE bytes de RAM[ESI] a RAM[EDI] byte a byte via MAR/MBR.
+    |   Simula la instruccion REP MOVSB (Move String Byte con repeticion) de x86.
+    |   ESI = direccion fuente, EDI = direccion destino.
+    |   Se detiene al encontrar el terminador 0x00.
+    |   Convencion x86: prologo/epilogo estandar.
+    | ============================================================================================
+    |  0xB000   | PUSH EBP            | Prologo: guarda EBP del llamador.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB001   | MOV EBP,ESP         | Prologo: establece nuevo marco de pila.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB002   | MOV ECX,ELEM_SZ     | ECX = 16. Contador de bytes a copiar.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB003   | MOV EAX,[ESI]       | EAX = RAM[ESI]. Lee el byte fuente via MAR/MBR.  <- MEMCPY_LOOP
+    |           |                     |  -> MAR = ESI, MBR = RAM[MAR], EAX = MBR.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB004   | MOV [EDI],EAX       | RAM[EDI] = EAX. Escribe el byte destino via MAR/MBR.
+    |           |                     |  -> MAR = EDI, MBR = EAX, RAM[MAR] = MBR.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB005   | CMP EAX,0           | Compara EAX con el terminador 0x00.
+    |           |                     | ZF = 1 si se copio el terminador (fin de cadena).
+    |  -------------------------------------------------------------------------------------------
+    |  0xB006   | JE 0xB00C           | Si ZF == 1 (terminador copiado): salta al epilogo.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB007   | ADD ESI,1           | ESI += 1. Avanza el puntero fuente al siguiente byte.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB008   | ADD EDI,1           | EDI += 1. Avanza el puntero destino al siguiente byte.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB009   | DEC ECX             | ECX--. Un byte menos por copiar.
+    |           |                     | ZF = 1 si ECX llego a 0 (se copiaron todos los bytes).
+    |  -------------------------------------------------------------------------------------------
+    |  0xB00A   | JNZ 0xB003          | Si ZF == 0 (ECX > 0 y no hubo terminador): repite.
+    |           |                     | Si ZF == 1: el slot esta lleno, continua al epilogo.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB00B   | MOV [EDI],0         | RAM[EDI] = 0x00. Garantiza terminador en la ultima posicion.
+    |           |                     |  -> MAR = EDI, MBR = 0, RAM[MAR] = MBR.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB00C   | MOV ESP,EBP         | Epilogo: restaura ESP.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB00D   | POP EBP             | Epilogo: restaura EBP del llamador.
+    |  -------------------------------------------------------------------------------------------
+    |  0xB00E   | RET                 | Epilogo: regresa al llamador (0x800D, 0x8023, o 0x8039).
+    | ============================================================================================
+    |   INT_PRINT --- 0xC000
+    |   Muestra en consola la cadena almacenada en RAM[EAX] char por char via MAR/MBR.
+    |   Simula INT 21h funcion 09h (print string) de DOS, o syscall write de Linux.
+    |   EAX = direccion base del elemento a imprimir en RAM.
+    |   Calcula el indice del elemento como: (EAX - LIST_BASE) / ELEM_SIZE.
+    |   Convencion x86: prologo/epilogo estandar.
+    | ============================================================================================
+    |  0xC000   | PUSH EBP            | Prologo: guarda EBP del llamador.
+    |  -------------------------------------------------------------------------------------------
+    |  0xC001   | MOV EBP,ESP         | Prologo: establece nuevo marco de pila.
+    |  -------------------------------------------------------------------------------------------
+    |  0xC002   | INT PRINT_STR       | INTERRUPCION DE SALIDA. Muestra la cadena en RAM[EAX].
+    |           |                     | Por cada char del elemento:
+    |           |                     |   MAR = EAX + i.
+    |           |                     |   MBR = RAM[MAR].
+    |           |                     |   Si MBR == 0: fin de cadena.
+    |           |                     |   Imprime (char)MBR en consola.
+    |           |                     | Equivale a INT 21h funcion 09h en DOS o
+    |           |                     | syscall write(1, addr, len) en Linux.
+    |  -------------------------------------------------------------------------------------------
+    |  0xC003   | MOV ESP,EBP         | Epilogo: restaura ESP.
+    |  -------------------------------------------------------------------------------------------
+    |  0xC004   | POP EBP             | Epilogo: restaura EBP del llamador.
+    |  -------------------------------------------------------------------------------------------
+    |  0xC005   | RET                 | Epilogo: regresa al llamador (0x803D, 0x8045).
+    |  -------------------------------------------------------------------------------------------
     |  FIN DEL PROGRAMA
-    |  EAX = lista[indice consultado]  (resultado final en el acumulador)
+    |  EDX = cantidad total de elementos guardados en la lista.
     |---------------------------------------------------------------------------------------------
 
     ============================================================================================
     INTERPRETACION DE LA EJECUCION DEL SIMULADOR CPU x86
     ============================================================================================
-    El programa simula la ejecucion de un procesador x86 que almacena valores introducidos por el 
-    usuario dentro de una lista en memoria RAM.
+    El programa simula la ejecucion de un procesador x86 que gestiona una lista
+    de datos en memoria RAM, permitiendo guardar, mostrar y consultar elementos
+    de forma interactiva.
 
-    La zona de memoria reservada para la lista es:
-        0x0100 – 0x07FF
-    El programa principal comienza en la direccion:
-        0x0800
-    El handler de interrupcion de teclado se encuentra en:
-        0x0A00
+    MAPA DE MEMORIA:
+        0x0000 - 0x000F  :  Zona reservada. EBP vale 0 desde el inicio
+                            y esta zona nunca se usa para datos.
+        0x0010 - 0x010F  :  CHAR MAP. Tabla de 256 posiciones hardcodeada
+                            antes de que inicie el programa. Cada posicion
+                            guarda su propio indice: RAM[0x0010 + ascii] = ascii.
+                            Simula la ROM del controlador de teclado.
+        0x0110 - 0x020F  :  BUFFER. Zona donde INT_TECLADO deposita la
+                            entrada actual del usuario via MAR/MBR.
+        0x0210 - 0x030F  :  PENDING. Ultimo dato ingresado por el usuario,
+                            esperando el comando '@' o '#'.
+        0x0310 - 0x7FFF  :  LIST. Zona de almacenamiento de la lista.
+                            Cada elemento ocupa 16 bytes consecutivos
+                            (cadena ASCII terminada en 0x00).
+        0x8000 - ...     :  Programa principal. EIP inicia aqui.
+        0xA000 - ...     :  INT_TECLADO. Handler de lectura del teclado.
+        0xB000 - ...     :  INT_MEMCPY. Handler de copia de memoria.
+        0xC000 - ...     :  INT_PRINT. Handler de salida a consola.
+        0xFFFF           :  Tope del stack. ESP inicia aqui y crece hacia abajo.
 
-    El programa realiza tres fases principales:
-        1.- Leer valores introducidos por el usuario
-        2.- Guardarlos en memoria
-        3.- Recorrer la lista almacenada y mostrarla
-        
+    El ciclo de instruccion esta implementado en el while principal:
+        Fetch  : int eip_actual = EIP  (la UC lee la direccion en EIP)
+        Decode : switch(EIP)           (la UC identifica que instruccion es)
+        Execute: el case correspondiente (la ALU/UC ejecuta la microoperacion)
+
     ============================================================================================
-    FASE 1: PRIMERA INTERRUPCION (lectura de cantidad de elementos)
+    FLUJO COMPLETO DE EJECUCION - EJEMPLO CON 3 DATOS
     ============================================================================================
-    Inicio del programa.
-        EIP = 0x0800
+    El usuario ingresara: "hola", "mundo", "cpu".
+    Luego mostrara toda la lista, consultara el indice 1, y saldra.
+
+    ============================================================================================
+    ENTRADA 1: DATO "hola"
+    ============================================================================================
+    EIP = 0x8000.
     INSTRUCCION:
-        CALL 0x0A00
-    La Unidad de Control ejecuta una llamada al handler de interrupcion de teclado.
-
+        CALL 0xA000
+    La UC llama a INT_TECLADO para leer la entrada.
     Operaciones internas:
-        1.-El registro ESP se decrementa para reservar espacio en la pila
-        2.-La direccion de retorno (0x0801) se guarda en la pila
-        3.-El contador de programa cambia a 0x0A00
-
-    Después la ejecucion se transfiere al handler de interrupcion.
+        1. ESP -= 4. Se reserva espacio en la pila.
+        2. MAR = ESP, MBR = 0x8001, RAM[MAR] = MBR. Se guarda la dir. de retorno.
+        3. EIP = 0xA000. La UC salta al handler.
 
     ============================================================================================
-    HANDLER DE INTERRUPCION
+    INT_TECLADO (primera llamada)
     ============================================================================================
-    Direccion actual: 0x0A00
+    Direccion: 0xA000.
     INSTRUCCION:
         PUSH EBP
-    El registro EBP se guarda en la pila para preservar el contexto.
-    ESP se decrementa nuevamente.
+    EBP (vale 0) se guarda en la pila. ESP -= 4.
 
     INSTRUCCION:
         MOV EBP, ESP
-    Se crea un nuevo marco de pila para la funcion.
+    EBP = ESP. Se establece el nuevo marco de pila.
 
     INSTRUCCION:
         INT LEER_TECLADO
-    El sistema solicita un valor al usuario.
-        Ejemplo el usuario introduce:
-            3
-    El valor es enviado al CPU y almacenado en el registro:
-        EAX = 3
-
-    INSTRUCCION:
-        MOV ESP, EBP
-    Libera el espacio. El puntero de la pila vuelve a la base para borrar los datos temporales 
-    usados por la función.
-
-    INSTRUCCION:
-        POP EBP
-    Restaura el control. Recupera de la pila el valor original de EBP para que el programa 
-    principal pueda seguir donde se quedó
-
-    INSTRUCCION:
-        RET
-    La direccion de retorno se recupera de la pila y la ejecucion regresa al programa principal.
-
-    ============================================================================================
-    FASE 2: PREPARACION DEL BUCLE
-    ============================================================================================
-    INSTRUCCION:
-        MOV ECX, EAX
-    El valor introducido (3) se copia al registro ECX.
-    ECX funcionará como contador del bucle.
-
-    INSTRUCCION:
-        MOV EDX, EAX
-    EDX guarda tambien la cantidad total de elementos.
-
-    INSTRUCCION:
-        MOV EBX, 0x0100
-    EBX se inicializa con la direccion inicial de la lista en memoria RAM.
-
-    ============================================================================================
-    FASE 3: BUCLE DE CAPTURA DE VALORES
-    ============================================================================================
-    El programa entra a un bucle que se ejecutara ECX veces.
-    Cada iteracion realiza:
-        1.-Leer un numero
-        2.-Guardarlo en memoria
-        3.-Avanzar al siguiente espacio
-        4.-Decrementar el contador
-
-    --------------------------------------------------------------------------------------------
-    ITERACION 1
-    --------------------------------------------------------------------------------------------
+    El sistema solicita entrada al usuario.
     Usuario introduce:
-        10
-    El valor se almacena en:
-        EAX = 10
-    INSTRUCCION:
-        MOV [EBX], EAX
-    La CPU escribe el valor en memoria.
-        EBX = 0x0100
-    Resultado:
-        RAM[0x0100] = 10
+        hola
+    La CPU busca cada char en CHAR_MAP via MAR/MBR:
+        MAR = 0x0010 + 'h' (= 0x0010 + 104 = 0x0078), MBR = RAM[MAR] = 104, RAM[0x0110] = 104.
+        MAR = 0x0010 + 'o' (= 0x0010 + 111 = 0x007F), MBR = RAM[MAR] = 111, RAM[0x0111] = 111.
+        MAR = 0x0010 + 'l' (= 0x0010 + 108 = 0x007C), MBR = RAM[MAR] = 108, RAM[0x0112] = 108.
+        MAR = 0x0010 + 'a' (= 0x0010 + 97  = 0x0071), MBR = RAM[MAR] = 97,  RAM[0x0113] = 97.
+        MAR = 0x0010 + 0x00, MBR = 0, RAM[0x0114] = 0. (terminador)
+    BUFFER[0x0110 ... 0x0114] = "hola\0".
 
     INSTRUCCION:
-        ADD EBX, 4
-    La ALU suma 4 al registro EBX para apuntar al siguiente elemento de la lista.
-        EBX = 0x0104
-
-    INSTRUCCION:
-        DEC ECX
-    La ALU decrementa el contador.
-    Antes:
-        ECX = 3
-    Despues:
-        ECX = 2
-    Como el resultado no es cero:
-        ZF = 0
-
-    INSTRUCCION:
-        JNZ 0x0804
-    La Unidad de Control revisa la bandera ZF.
-    Como ZF = 0, el salto se ejecuta y el programa regresa al inicio del bucle.
-
-    --------------------------------------------------------------------------------------------
-    ITERACION 2
-    --------------------------------------------------------------------------------------------
-    Usuario introduce:
-        7
-    El valor se almacena en:
-            EAX = 7
-        MOV [EBX], EAX
-            RAM[0x0104] = 7
-        ADD EBX, 4
-            EBX = 0x0108
-        DEC ECX
-    Antes:
-        ECX = 2
-    Despues:
-        ECX = 1
-    Bandera:
-        ZF = 0
-
-    JNZ 
-    El salto se ejecuta nuevamente.
-    
-    --------------------------------------------------------------------------------------------
-    ITERACION 3
-    --------------------------------------------------------------------------------------------
-    Usuario introduce:
-            5
-        EAX = 5
-        MOV [EBX], EAX
-            RAM[0x0108] = 5
-        ADD EBX, 4
-            EBX = 0x010C
-        DEC ECX
-    Antes:
-        ECX = 1
-    Despues:
-        ECX = 0
-
-    Como el resultado es cero:
-        ZF = 1
-    
-    JNZ
-    La instruccion verifica la bandera.
-    Como:
-        ZF = 1
-    el salto NO se ejecuta y el programa sale del bucle.
+        MOV ESP, EBP / POP EBP / RET
+    Epilogo estandar. EIP vuelve a 0x8001.
 
     ============================================================================================
-    FASE 4: RECORRIDO DE LA LISTA EN MEMORIA
+    DE VUELTA EN EL BUCLE PRINCIPAL
     ============================================================================================
-    El programa ahora recorre la lista almacenada para mostrar sus valores.
     INSTRUCCION:
-        MOV EBX, 0x0100
-    Se reinicia el puntero al inicio de la lista.
+        MOV EAX, [BUF]
+    MAR = 0x0110, MBR = RAM[MAR] = 104 ('h'). EAX = 104.
 
+    INSTRUCCIONES CMP / JE (0x8002 a 0x8009):
+    La UC compara EAX (104) con '@' (64), '#' (35), '$' (36), '!' (33).
+    Ninguna coincide. ZF = 0 en todas. Ningun salto se ejecuta.
+
+    INSTRUCCIONES:
+        MOV ESI, 0x0110  /  MOV EDI, 0x0210  /  CALL 0xB000
+    ESI = BUFFER_BASE, EDI = PENDING_BASE.
+    La UC llama a INT_MEMCPY para copiar BUFFER -> PENDING.
+
+    ============================================================================================
+    INT_MEMCPY (copia "hola" de BUFFER a PENDING)
+    ============================================================================================
+    Prologo estandar. ECX = 16.
+    MEMCPY_LOOP:
+        Lee 'h' de RAM[ESI=0x0110] via MAR/MBR. Escribe en RAM[EDI=0x0210].
+        CMP 'h' con 0: ZF=0. Continua.
+        ESI=0x0111, EDI=0x0211. DEC ECX (ECX=15). JNZ: repite.
+        ... (repite para 'o', 'l', 'a') ...
+        Lee 0x00 (terminador) de BUFFER. Escribe 0x00 en PENDING.
+        CMP 0 con 0: ZF=1. JE al epilogo.
+    PENDING[0x0210 ... 0x0214] = "hola\0".
+    RET -> EIP = 0x800D.
+
+    INSTRUCCION:
+        JMP 0x8000
+    Regresa al inicio del bucle. El dato "hola" queda pendiente.
+
+    ============================================================================================
+    ENTRADA 2: COMANDO "@" - GUARDAR "hola"
+    ============================================================================================
+    INT_TECLADO lee "@". BUFFER[0x0110] = '@' (64).
+    MOV EAX, [BUF]: EAX = 64.
+    CMP EAX, '@': ZF = 1.
+    JE 0x8020: EIP = 0x8020 (BLOQUE SAVE).
+
+    BLOQUE SAVE:
+    INSTRUCCION:
+        MOV ESI, 0x0210
+    ESI = PENDING_BASE (fuente: "hola").
+
+    INSTRUCCION:
+        MOV EDI, EBX
+    EBX = 0x0310 (LIST_BASE, primera celda libre).
+    EDI = 0x0310.
+
+    INSTRUCCION:
+        CALL 0xB000
+    INT_MEMCPY copia "hola" de PENDING (0x0210) a LIST[0] (0x0310).
+    Resultado: RAM[0x0310 ... 0x0314] = "hola\0".
+
+    INSTRUCCION:
+        ADD EBX, 0x10
+    EBX = 0x0310 + 16 = 0x0320. Siguiente celda libre.
+
+    INSTRUCCION:
+        ADD EDX, 1
+    EDX = 1. La lista tiene 1 elemento.
+
+    INSTRUCCION:
+        MOV [PEND], 0
+    RAM[0x0210] = 0. PENDING se limpia.
+
+    INSTRUCCION:
+        JMP 0x8000
+    Regresa al bucle.
+
+    ============================================================================================
+    ENTRADAS 3 y 4: "mundo" + "@"  /  ENTRADAS 5 y 6: "cpu" + "@"
+    ============================================================================================
+    El mismo proceso se repite:
+        "mundo" -> PENDING -> CALL MEMCPY -> LIST[1] en 0x0320. EBX = 0x0330. EDX = 2.
+        "cpu"   -> PENDING -> CALL MEMCPY -> LIST[2] en 0x0330. EBX = 0x0340. EDX = 3.
+
+    Estado de la lista en RAM:
+        0x0310 ... 0x031F  :  "hola\0"
+        0x0320 ... 0x032F  :  "mundo\0"
+        0x0330 ... 0x033F  :  "cpu\0"
+
+    ============================================================================================
+    ENTRADA 7: COMANDO "$" - MOSTRAR TODA LA LISTA
+    ============================================================================================
+    INT_TECLADO lee "$". BUFFER[0x0110] = '$' (36). EAX = 36.
+    CMP EAX, '$': ZF = 1.
+    JE 0x8040: EIP = 0x8040 (BLOQUE SHOW ALL).
+
+    BLOQUE SHOW ALL:
     INSTRUCCION:
         MOV ECX, EDX
-    ECX vuelve a contener el numero total de elementos.
+    ECX = 3. Contador del bucle de muestra.
 
-
-    ============================================================================================
-    LECTURA DE LA LISTA
-    ============================================================================================
-    Iteracion 1:
-        MOV EAX, [EBX]
-        Se lee el valor almacenado en memoria.
-            EAX = RAM[0x0100] = 10
-        Resultado mostrado:
-            lista[0] = 10
-
-    Iteracion 2:
-        MOV EAX, [EBX]
-            EAX = RAM[0x0104] = 7
-        Resultado:
-            lista[1] = 7
-    Iteracion 3:
-        MOV EAX, [EBX]
-            EAX = RAM[0x0108] = 5
-        Resultado:
-            lista[2] = 5
-
-    ============================================================================================
-    FASE 5: CONSULTA DE UN ELEMENTO DE LA LISTA POR INDICE
-    ============================================================================================
-    Una vez que la lista ha sido almacenada en memoria y mostrada completamente, el programa 
-    permite al usuario consultar un elemento especifico indicando su indice.
-
-    La lista actual almacenada en RAM es:
-    Direccion      Valor
-    0x0100         10
-    0x0104         7
-    0x0108         5
-
-    Esto corresponde a:
-    lista[0] = 10
-    lista[1] = 7
-    lista[2] = 5
-
-    ============================================================================================
-    LECTURA DEL INDICE SOLICITADO
-    ============================================================================================
-    El programa vuelve a invocar el handler de interrupcion para leer el indice que el usuario 
-    desea consultar.
     INSTRUCCION:
-        CALL 0x0A00
+        MOV EAX, 0x0310
+    EAX = LIST_BASE. Puntero de lectura al inicio de la lista.
 
-    La Unidad de Control realiza las siguientes operaciones:
-        1.-Guarda la direccion de retorno en la pila
-        2.-ESP se decrementa
-        3.-EIP se actualiza a la direccion del handler
-            EIP = 0x0A00
+    SHOW_LOOP - Iteracion 1:
+        CMP ECX, 0: ECX=3, ZF=0. No salta.
+        CALL 0xC000: INT_PRINT muestra RAM[0x0310] = "hola". Imprime: lista[0] = "hola".
+        ADD EAX, 0x10: EAX = 0x0320.
+        DEC ECX: ECX = 2. ZF = 0.
+        JNZ 0x8042: ZF=0, salta. Repite.
+
+    SHOW_LOOP - Iteracion 2:
+        CALL 0xC000: INT_PRINT muestra RAM[0x0320] = "mundo". Imprime: lista[1] = "mundo".
+        ADD EAX, 0x10: EAX = 0x0330. DEC ECX: ECX = 1. JNZ: repite.
+
+    SHOW_LOOP - Iteracion 3:
+        CALL 0xC000: INT_PRINT muestra RAM[0x0330] = "cpu". Imprime: lista[2] = "cpu".
+        ADD EAX, 0x10: EAX = 0x0340. DEC ECX: ECX = 0. ZF = 1.
+        JNZ 0x8042: ZF=1, NO salta. Fin del bucle.
+
+    JMP 0x8000. Regresa al bucle principal.
 
     ============================================================================================
-    HANDLER DE INTERRUPCION
+    ENTRADA 8: DATO "1" (indice a consultar)
     ============================================================================================
-        PUSH EBP
-        MOV EBP, ESP
-    Se crea un nuevo marco de pila para la funcion.
+    INT_TECLADO lee "1". BUFFER[0x0110] = '1' (49). EAX = 49.
+    No coincide con ningun comando. Se copia a PENDING via MEMCPY.
+    PENDING[0x0210] = '1' (49), PENDING[0x0211] = 0x00.
 
-        INT LEER_TECLADO
-    El sistema solicita un indice al usuario.
-    Ejemplo:
-    Usuario introduce:
-            1
-        El valor se almacena en el registro:
-            EAX = 1
-
-        MOV ESP, EBP
-    Libera el espacio. El puntero de la pila vuelve a la base para borrar los datos temporales
-    usados por la funcion.
-
-        POP EBP
-    Restaura el control. Recupera de la pila el valor original de EBP para que el programa
-    principal pueda seguir donde se quedo.
-
-        RET
-    La direccion de retorno se recupera de la pila y la ejecucion vuelve al programa principal.
-        
     ============================================================================================
-    CALCULO DE LA DIRECCION DEL ELEMENTO
+    ENTRADA 9: COMANDO "#" - LEER lista[1]
     ============================================================================================
-    El programa necesita calcular la direccion en memoria del elemento solicitado.
-    
+    INT_TECLADO lee "#". BUFFER[0x0110] = '#' (35). EAX = 35.
+    CMP EAX, '#': ZF = 1.
+    JE 0x8030: EIP = 0x8030 (BLOQUE READ).
+
+    BLOQUE READ - PARSE_NUM:
+    MOV ECX, 0 / MOV ESI, 0x0210.
+
+    PARSE_LOOP - Iteracion 1:
+        MOV EAX, [ESI=0x0210]: MAR=0x0210, MBR=49, EAX=49. (char '1')
+        CMP EAX, 0: ZF=0. No es terminador.
+        ADD EAX, -48: EAX = 49 - 48 = 1. (valor del digito)
+        MUL ECX, 10: ECX = 0 * 10 = 0.
+        ADD ECX, EAX: ECX = 0 + 1 = 1.
+        ADD ESI, 1: ESI = 0x0211.
+
+    PARSE_LOOP - Iteracion 2:
+        MOV EAX, [ESI=0x0211]: MAR=0x0211, MBR=0, EAX=0. (terminador)
+        CMP EAX, 0: ZF=1.
+        JE 0x8039: fin del PARSE_LOOP. ECX = 1 (el indice).
+
+    CALCULO DE DIRECCION:
+        MOV EAX, 0x10: EAX = 16 (ELEM_SIZE).
+        MUL EAX, ECX: EAX = 16 * 1 = 16 = 0x10. (offset)
+        ADD EAX, 0x0310: EAX = 0x0310 + 0x10 = 0x0320. (direccion de lista[1])
+
     INSTRUCCION:
-        MOV EDX, EAX
-    En este paso, el registro EDX se destruye. Al mover el índice (EAX) a EDX, este pierde el valor 
-    N que tenía guardado.
-    
-    La formula utilizada es:
-        direccion = base_lista + (indice * 4)
-    Donde:
-        base_lista = 0x0100
-        tamaño entero = 4 bytes
-    Ejemplo:
-        indice = 1
-        Entonces:
-            direccion = 0x0100 + (1 * 4)
-            direccion = 0x0104
+        CALL 0xC000
+    INT_PRINT muestra RAM[0x0320] = "mundo". Imprime: lista[1] = "mundo".
+    RET -> EIP = 0x803D.
+
+    JMP 0x8000. Regresa al bucle.
 
     ============================================================================================
-    LECTURA DEL ELEMENTO EN MEMORIA
+    ENTRADA 10: COMANDO "!" - SALIR
     ============================================================================================
+    INT_TECLADO lee "!". BUFFER[0x0110] = '!' (33). EAX = 33.
+    CMP EAX, '!': ZF = 1.
+    JE 0x8060: EIP = 0x8060.
+
     INSTRUCCION:
-        MOV EAX, [direccion]
-    La CPU accede a la memoria RAM y carga el valor en el registro EAX.
-    En este caso:
-        RAM[0x0104] = 7
-    Por lo tanto:
-        EAX = 7
-
-    ============================================================================================
-    RESULTADO MOSTRADO AL USUARIO
-    ============================================================================================
-    El programa muestra el valor solicitado:
-        indice solicitado = 1
-        valor encontrado = 7
-    Por lo tanto:
-        lista[1] = 7
-
-    ============================================================================================
-    FIN DEL PROGRAMA
-    ============================================================================================
-    Una vez realizada la consulta, el programa finaliza la simulacion de ejecucion.
-    La CPU ejecuta la instruccion final:
         HLT
-    Esta instruccion coloca al procesador en estado de
-    detencion, finalizando completamente la ejecucion.
+    HLT_flag = true. El while principal deja de iterar.
+    El programa finaliza mostrando:
+        Elementos en lista : 3
+        Ciclos de reloj    : N
 
     ============================================================================================
     FIN DE LA INTERPRETACION
     ============================================================================================
 
-        Inicializacion de Variables
+    Inicializacion de Variables
     |---------------------------------------------------------------------------------------------
-    | // Memoria RAM simulada (64KB = 65536 posiciones enteras)
+    | // RAM simulada: 65536 posiciones de 1 byte cada una.
     |    int RAM[65536] = {0};
     |
-    |    // Registros de la CPU (nomenclatura Intel x86)
-    |    int EAX = 0; // Acumulador: guarda resultados y datos temporales
-    |    int EBX = 0; // Base: puntero que recorre la lista en RAM
-    |    int ECX = 0; // Contador: controla los bucles de captura y muestra
-    |    int EDX = 0; // Datos: guarda N para recuperarlo y el indice de consulta
-    |    int ESP = 0; // Stack Pointer: tope de la pila (crece hacia abajo)
-    |    int EBP = 0; // Base Pointer: ancla del marco de la interrupcion
-    |    int EIP = 0; // Instruction Pointer: direccion de la instruccion actual
-    |    int ZF = 0;  // Zero Flag: se activa (=1) cuando DEC produce exactamente 0
+    | // Registros de proposito general
+    |    int EAX = 0;  // Accumulator: resultados, primer char del buffer, puntero de lectura
+    |    int EBX = 0;  // Base: puntero a la siguiente celda libre de la lista
+    |    int ECX = 0;  // Counter: contador de bucles y acumulador de PARSE_NUM
+    |    int EDX = 0;  // Data: contador de elementos guardados en la lista
+    |
+    | // Registros de pila y flujo
+    |    int ESP = 0;  // Stack Pointer: tope de la pila (crece hacia abajo desde 0xFFFF)
+    |    int EBP = 0;  // Base Pointer: ancla del marco de funcion
+    |    int EIP = 0;  // Instruction Pointer: direccion de instruccion actual
+    |
+    | // Registros de segmento para operaciones de cadenas
+    |    int ESI = 0;  // Source Index: direccion fuente para INT_MEMCPY
+    |    int EDI = 0;  // Destination Index: direccion destino para INT_MEMCPY
+    |
+    | // Registros internos de memoria (Von Neumann)
+    |    int MAR = 0;  // Memory Address Register: direccion a leer o escribir
+    |    int MBR = 0;  // Memory Buffer Register: dato en transito hacia o desde RAM
+    |
+    | // Bandera
+    |    int ZF = 0;   // Zero Flag: 1 si el resultado de la operacion fue exactamente cero
+    |
     |    bool HLT_flag = false;
     |    int ciclo = 1;
     |---------------------------------------------------------------------------------------------
-    
-        Funciones
+
+    Funciones de visualizacion
     |---------------------------------------------------------------------------------------------
     |    void imprimir_encabezado()
     |    {
-    |        printf("----------------------------------------------------------------------------------------------\n");
-    |        printf("CICLO | EIP    | INSTRUCCION           | EAX  | EBX  | ECX  | EDX  | EBP  | ESP  | ZF | TOPE\n");
-    |        printf("----------------------------------------------------------------------------------------------\n");
+    |        printf("---...---\n");
+    |        printf("CICLO | EIP | INSTRUCCION | EAX | EBX | ECX | EDX | ESI | EDI | EBP | ESP | MAR | MBR | ZF | TOPE\n");
+    |        printf("---...---\n");
     |    }
     |
-    |    void imprimir_fila(int eip, const char *inst)
+    |    void imprimir_fila(int eip, const char* inst)
     |    {
-    |        int tope = RAM[ESP];
-    |        printf("%04d  | 0x%04X | %-21s | %04X | %04X | %04X | %04X | %04X | %04X | %d  | %d\n",
-    |            ciclo, eip, inst,
-    |            (unsigned short)EAX,
-    |            (unsigned short)EBX,
-    |            (unsigned short)ECX,
-    |            (unsigned short)EDX,
-    |            (unsigned short)EBP,
-    |            (unsigned short)ESP,
-    |            ZF,
-    |            tope);
+    |        int tope = RAM[ESP];  // valor almacenado en el tope actual de la pila
+    |        printf("%04d | 0x%04X | %-22s | %04X | ... | %d | %d\n",
+    |            ciclo, eip, inst, EAX, ..., ZF, tope);
     |    }
     |---------------------------------------------------------------------------------------------
 
-        Hardware de la ALU y Unidad de Control (Microoperaciones)
+    Hardware de la ALU y Unidad de Control (Microoperaciones)
     |---------------------------------------------------------------------------------------------
-    |    // MOV: Carga un valor inmediato en un registro
-    |    void MOV(int &dest, int valor)
-    |    {
-    |        dest = valor;
-    |        EIP++;
-    |    }
+    |    // MOV: carga valor inmediato en registro. No modifica ZF.
+    |    void MOV(int& dest, int valor) { dest = valor; EIP++; }
     |
-    |    // MOV_REG: Copia el valor de un registro a otro
-    |    void MOV_REG(int &dest, int src)
-    |    {
-    |        dest = src;
-    |        EIP++;
-    |    }
+    |    // MOV_REG: copia registro a registro. No modifica ZF.
+    |    void MOV_REG(int& dest, int src) { dest = src; EIP++; }
     |
-    |    // MOV_MEM_WRITE: Escribe un valor en una direccion de la RAM
-    |    void MOV_MEM_WRITE(int addr, int valor)
-    |    {
-    |        RAM[addr] = valor;
-    |        EIP++;
-    |    }
+    |    // ADD: suma valor al destino. ZF=1 si resultado==0.
+    |    void ADD(int& dest, int valor) { dest += valor; ZF = (dest==0)?1:0; EIP++; }
     |
-    |    // MOV_MEM_READ: Lee la RAM en la direccion dada y lo guarda en EAX
-    |    void MOV_MEM_READ(int addr)
-    |    {
-    |        EAX = RAM[addr];
-    |        EIP++;
-    |    }
+    |    // MUL: multiplica dest por valor. En x86 MUL usa EAX implicito siempre.
+    |    void MUL(int& dest, int valor) { dest *= valor; ZF = (dest==0)?1:0; EIP++; }
     |
-    |    // ADD: Suma un valor al destino
-    |    void ADD(int &dest, int valor)
-    |    {
-    |        dest = dest + valor;
-    |        EIP++;
-    |    }
+    |    // DEC: decrementa dest. ZF=1 si resultado==0. DEC no modifica CF en x86 real.
+    |    void DEC(int& dest) { dest--; ZF = (dest==0)?1:0; EIP++; }
     |
-    |    // MUL: Multiplica EAX por el valor dado, resultado en EAX
-    |    // En x86 MUL usa EAX como operando implicito siempre
-    |    void MUL(int &dest, int valor)
-    |    {
-    |        dest = dest * valor;
-    |        EIP++;
-    |    }
+    |    // CMP: compara a y b. ZF=1 si iguales. No guarda resultado.
+    |    void CMP(int a, int b) { ZF = (a==b)?1:0; EIP++; }
     |
-    |    // DEC: Decrementa un registro y actualiza ZF
-    |    // Simula el circuito de decremento de la ALU y las compuertas NOR
-    |    void DEC(int &dest)
-    |    {
-    |        dest = dest - 1;
-    |        ZF = (dest == 0) ? 1 : 0;
-    |        EIP++;
-    |    }
+    |    // JE: salta si ZF==1 (Jump if Equal / Jump if Zero).
+    |    void JE(int addr) { EIP = (ZF==1) ? addr : EIP+1; }
     |
-    |    // JNZ: Salta si ZF == 0 (Si el resultado anterior no fue cero)
-    |    void JNZ(int addr)
-    |    {
-    |        if (ZF == 0)
-    |            EIP = addr;
-    |        else
-    |            EIP++;
-    |    }
+    |    // JNZ: salta si ZF==0 (Jump if Not Zero).
+    |    void JNZ(int addr) { EIP = (ZF==0) ? addr : EIP+1; }
     |
-    |    // PUSH: Decrementa ESP en 4 y guarda el valor en el tope de la pila
-    |    void PUSH(int valor)
-    |    {
-    |        ESP -= 4;
-    |        RAM[ESP] = valor;
-    |        EIP++;
-    |    }
+    |    // JMP: salto incondicional.
+    |    void JMP(int addr) { EIP = addr; }
     |
-    |    // POP_VAL: Lee el tope de la pila y libera el espacio incrementando ESP en 4
-    |    int POP_VAL()
-    |    {
-    |        int valor = RAM[ESP];
-    |        ESP += 4;
-    |        EIP++;
-    |        return valor;
-    |    }
+    |    // PUSH: ESP-=4, MAR=ESP, MBR=valor, RAM[MAR]=MBR. EIP++.
+    |    void PUSH(int valor) { ESP-=4; MAR=ESP; MBR=valor; RAM[MAR]=MBR; EIP++; }
     |
-    |    // CALL: Guarda la direccion de retorno en el stack y salta al destino
-    |    // Es un PUSH de la dir. de retorno seguido de un JMP
-    |    void CALL(int dest, int ret)
-    |    {
-    |        ESP -= 4;
-    |        RAM[ESP] = ret;
-    |        EIP = dest;
-    |    }
+    |    // POP_VAL: MAR=ESP, MBR=RAM[MAR], valor=MBR, ESP+=4. EIP++.
+    |    int POP_VAL() { MAR=ESP; MBR=RAM[MAR]; int v=MBR; ESP+=4; EIP++; return v; }
     |
-    |    // RET_OP: Saca la direccion de retorno del stack y la inyecta en EIP
-    |    void RET_OP()
-    |    {
-    |        EIP = RAM[ESP];
-    |        ESP += 4;
-    |    }
+    |    // CALL: ESP-=4, MAR=ESP, MBR=ret, RAM[MAR]=MBR, EIP=dest.
+    |    void CALL(int dest, int ret) { ESP-=4; MAR=ESP; MBR=ret; RAM[MAR]=MBR; EIP=dest; }
     |
-    |    // HLT_OP: Detiene el ciclo de instruccion
-    |    void HLT_OP()
-    |    {
-    |        HLT_flag = true;
-    |    }
+    |    // RET_OP: MAR=ESP, MBR=RAM[MAR], EIP=MBR, ESP+=4.
+    |    void RET_OP() { MAR=ESP; MBR=RAM[MAR]; EIP=MBR; ESP+=4; }
+    |
+    |    // HLT_OP: activa HLT_flag. El while principal deja de iterar.
+    |    void HLT_OP() { HLT_flag = true; }
     |---------------------------------------------------------------------------------------------
 
-
-        Ciclo de Instrucción (Fetch - Decode - Execute)
+    Ciclo de Instruccion (Fetch - Decode - Execute)
     |---------------------------------------------------------------------------------------------
     |    int main()
     |    {
-    |    
-    |        EAX = 0;
-    |        EBX = 0;
-    |        ECX = 0;
-    |        EDX = 0;
-    |        ESP = 0xFFFF;
-    |        EBP = 0;
-    |        EIP = 0x0800;
-    |        ZF = 0;
-    |        HLT_flag = false;
-    |        ciclo = 1;
-    |    
-    |        printf("=== SIMULADOR CPU x86 - LISTA EN MEMORIA SIMULADA ===\n");
-    |        printf("Zona de lista en RAM : 0x0100 - 0x07FF (max 447 elementos)\n");
-    |        printf("Programa principal inicia en 0x0800\n");
-    |        printf("Handler interrupcion : 0x0A00\n\n");
-    |        imprimir_encabezado();
-    |    
+    |        inicializar_char_map();   // hardcodea ASCII 0-255 en RAM antes de iniciar
+    |
+    |        EAX=0; EBX=LIST_BASE; ECX=0; EDX=0;
+    |        ESI=0; EDI=0;
+    |        ESP=0xFFFF; EBP=0; EIP=0x8000;
+    |        MAR=0; MBR=0; ZF=0;
+    |        HLT_flag=false; ciclo=1;
+    |
     |        while (!HLT_flag)
     |        {
-    |    
-    |            int eip_actual = EIP;
-    |    
-    |            switch (EIP)
+    |            int eip_actual = EIP;   // FETCH: UC lee la direccion actual
+    |
+    |            switch (EIP)            // DECODE: UC identifica la instruccion
     |            {
-    |    
-    |                // =============================================================
-    |                // PROGRAMA PRINCIPAL (main) --- inicia en 0x0800
-    |                // =============================================================
-    |    
-    |            case 0x0800:
-    |                // Llama al handler para leer N (cuantos elementos ingresara el usuario)
-    |                // CALL: guarda 0x0801 en el stack como dir. de retorno, salta a 0x0A00
-    |                CALL(0x0A00, 0x0801);
-    |                imprimir_fila(eip_actual, "CALL 0x0A00");
-    |                break;
-    |    
-    |            case 0x0801:
-    |                // ECX = EAX: el N leido se convierte en el contador del bucle de captura
-    |                MOV_REG(ECX, EAX);
-    |                imprimir_fila(eip_actual, "MOV ECX, EAX");
-    |                break;
-    |    
-    |            case 0x0802:
-    |                // EDX = EAX: guarda N en EDX para recuperarlo despues del bucle
-    |                // ECX sera decrementado hasta 0, EDX conservara el valor original de N
-    |                MOV_REG(EDX, EAX);
-    |                imprimir_fila(eip_actual, "MOV EDX, EAX");
-    |                break;
-    |    
-    |            case 0x0803:
-    |                // EBX = 0x0100: apunta al inicio de la zona de lista en RAM
-    |                MOV(EBX, 0x0100);
-    |                imprimir_fila(eip_actual, "MOV EBX, 0x0100");
-    |                break;
-    |    
-    |            // --- BUCLE DE CAPTURA (LOOP_STORE) --- etiqueta: 0x0804
-    |            case 0x0804:
-    |                // Llama al handler para leer el siguiente dato del usuario
-    |                CALL(0x0A00, 0x0805);
-    |                imprimir_fila(eip_actual, "CALL 0x0A00");
-    |                break;
-    |    
-    |            case 0x0805:
-    |                // RAM[EBX] = EAX: escribe el dato en la posicion actual de la lista
-    |                MOV_MEM_WRITE(EBX, EAX);
-    |                imprimir_fila(eip_actual, "MOV [EBX], EAX");
-    |                break;
-    |    
-    |            case 0x0806:
-    |                // EBX += 4: avanza al siguiente slot (cada entero ocupa 4 bytes en x86)
-    |                ADD(EBX, 4);
-    |                imprimir_fila(eip_actual, "ADD EBX, 4");
-    |                break;
-    |    
-    |            case 0x0807:
-    |                // ECX--: un elemento menos por capturar. ALU actualiza ZF
-    |                DEC(ECX);
-    |                imprimir_fila(eip_actual, "DEC ECX");
-    |                break;
-    |    
-    |            case 0x0808:
-    |                // Si ZF==0 (ECX no llego a 0): regresa a 0x0804 a leer otro dato
-    |                // Si ZF==1 (ECX llego a 0): avanza a 0x0809 (mostrar lista)
-    |                JNZ(0x0804);
-    |                imprimir_fila(eip_actual, "JNZ 0x0804");
-    |                break;
-    |    
-    |            // --- MOSTRAR LISTA COMPLETA (LOOP_SHOW) ---
-    |            case 0x0809:
-    |                // Reinicia EBX al inicio de la lista para recorrerla completa
-    |                MOV(EBX, 0x0100);
-    |                printf("--------------------------------------------------------------------------\n");
-    |                printf(">>> LISTA ALMACENADA EN RAM:\n");
-    |                imprimir_encabezado();
-    |                imprimir_fila(eip_actual, "MOV EBX, 0x0100");
-    |                break;
-    |    
-    |            case 0x080A:
-    |                // ECX = EDX: recupera N para controlar el bucle de muestra
-    |                MOV_REG(ECX, EDX);
-    |                imprimir_fila(eip_actual, "MOV ECX, EDX");
-    |                break;
-    |    
-    |            // --- LOOP_SHOW --- etiqueta: 0x080B
-    |            case 0x080B:
-    |            {
-    |                // EAX = RAM[EBX]: carga el elemento actual de la lista
-    |                int idx = (EBX - 0x0100) / 4;
-    |                MOV_MEM_READ(EBX);
-    |                imprimir_fila(eip_actual, "MOV EAX, [EBX]");
-    |                printf("       >> lista[%d] = %d\n", idx, EAX);
-    |                break;
+    |                case 0x8000: ... break;   // EXECUTE: CALL INT_TECLADO
+    |                case 0x8001: ... break;   // EXECUTE: MOV EAX,[BUF]
+    |                ...
+    |                case 0xC005: ... break;   // EXECUTE: RET (epilogo INT_PRINT)
+    |                default: ERROR; break;
     |            }
-    |    
-    |            case 0x080C:
-    |                // EBX += 4: avanza al siguiente elemento
-    |                ADD(EBX, 4);
-    |                imprimir_fila(eip_actual, "ADD EBX, 4");
-    |                break;
-    |    
-    |            case 0x080D:
-    |                // ECX--: un elemento menos por mostrar
-    |                DEC(ECX);
-    |                imprimir_fila(eip_actual, "DEC ECX");
-    |                break;
-    |    
-    |            case 0x080E:
-    |                // Si ZF==0: regresa a 0x080B (quedan elementos)
-    |                // Si ZF==1: avanza a 0x080F (consulta por indice)
-    |                JNZ(0x080B);
-    |                imprimir_fila(eip_actual, "JNZ 0x080B");
-    |                break;
-    |    
-    |            // --- CONSULTA POR INDICE ---
-    |            case 0x080F:
-    |                // Imprime separador de seccion y llama al handler para leer el indice
-    |                printf("--------------------------------------------------------------------------\n");
-    |                printf(">>> CONSULTA POR INDICE:\n");
-    |                imprimir_encabezado();
-    |                CALL(0x0A00, 0x0810);
-    |                imprimir_fila(eip_actual, "CALL 0x0A00");
-    |                break;
-    |    
-    |            case 0x0810:
-    |                // EDX = EAX: guarda el indice consultado en EDX
-    |                MOV_REG(EDX, EAX);
-    |                imprimir_fila(eip_actual, "MOV EDX, EAX");
-    |                break;
-    |    
-    |            case 0x0811:
-    |                // EBX = 0x0100: restaura la direccion base de la lista
-    |                MOV(EBX, 0x0100);
-    |                imprimir_fila(eip_actual, "MOV EBX, 0x0100");
-    |                break;
-    |    
-    |            case 0x0812:
-    |                // EAX = 4: carga el tamano de slot
-    |                // Necesario porque MUL en x86 usa EAX como operando implicito
-    |                MOV(EAX, 4);
-    |                imprimir_fila(eip_actual, "MOV EAX, 4");
-    |                break;
-    |    
-    |            case 0x0813:
-    |                // EAX = EAX * EDX = 4 * indice = offset en bytes
-    |                // MUL en x86 siempre multiplica contra EAX implicitamente
-    |                MUL(EAX, EDX);
-    |                imprimir_fila(eip_actual, "MUL EDX");
-    |                break;
-    |    
-    |            case 0x0814:
-    |                // EBX = base + offset: apunta exactamente al elemento pedido
-    |                ADD(EBX, EAX);
-    |                imprimir_fila(eip_actual, "ADD EBX, EAX");
-    |                break;
-    |    
-    |            case 0x0815:
-    |                // EAX = RAM[EBX]: carga el elemento consultado al acumulador
-    |                MOV_MEM_READ(EBX);
-    |                imprimir_fila(eip_actual, "MOV EAX, [EBX]");
-    |                printf("       >> Consulta: lista[%d] = %d\n", EDX, EAX);
-    |                break;
-    |    
-    |            case 0x0816:
-    |                // Fin del programa
-    |                HLT_OP();
-    |                imprimir_fila(eip_actual, "HLT");
-    |                break;
-    |    
-    |                // =============================================================
-    |                // HANDLER DE INTERRUPCION --- INT_READ en 0x0A00
-    |                // Simula que el periferico (teclado) entrega un dato a la CPU.
-    |                // Convencion x86: el resultado de la funcion queda en EAX.
-    |                // Sigue el prologo/epilogo estandar: PUSH EBP / MOV EBP,ESP
-    |                //                                   ... / MOV ESP,EBP / POP EBP / RET
-    |                // =============================================================
-    |    
-    |            case 0x0A00:
-    |                // Guarda el EBP del llamador en el stack
-    |                PUSH(EBP);
-    |                imprimir_fila(eip_actual, "PUSH EBP");
-    |                break;
-    |    
-    |            case 0x0A01:
-    |                // Establece el nuevo marco de la funcion
-    |                MOV_REG(EBP, ESP);
-    |                imprimir_fila(eip_actual, "MOV EBP, ESP");
-    |                break;
-    |    
-    |            case 0x0A02:
-    |                // INTERRUPCION: el periferico (teclado) entrega el dato a EAX
-    |                printf("--------------------------------------------------------------------------\n");
-    |                printf(">>> INTERRUPCION DE TECLADO >>> Ingrese un valor: ");
-    |                cin >> EAX;
-    |                EIP++;
-    |                imprimir_encabezado();
-    |                imprimir_fila(eip_actual, "INT LEER_TECLADO");
-    |                break;
-    |    
-    |            case 0x0A03:
-    |                // Destruye variables locales restaurando ESP al marco base (Si existieran)
-    |                MOV_REG(ESP, EBP);
-    |                imprimir_fila(eip_actual, "MOV ESP, EBP");
-    |                break;
-    |    
-    |            case 0x0A04:
-    |                // Restaura el EBP del llamador desde el stack
-    |                EBP = POP_VAL();
-    |                imprimir_fila(eip_actual, "POP EBP");
-    |                break;
-    |    
-    |            case 0x0A05:
-    |                // Saca la dir. de retorno del stack e inyecta en EIP
-    |                RET_OP();
-    |                imprimir_fila(eip_actual, "RET");
-    |                break;
-    |    
-    |            default:
-    |                // Validacion de EIP: si se sale del rango de instrucciones definido, se detiene la ejecucion
-    |                printf("ERROR: Violacion de segmento. EIP=0x%04X fuera de control.\n", EIP);
-    |                HLT_flag = true;
-    |                break;
-    |            }
-    |    
+    |
     |            ciclo++;
     |        }
-    |    
-    |        printf("--------------------------------------------------------------------------\n");
-    |        printf("=== EJECUCION FINALIZADA ===\n");
-    |        printf("Resultado final en EAX = %d (0x%04X)\n", EAX, EAX);
+    |
+    |        printf("Elementos en lista : %d\n", EDX);
+    |        printf("Ciclos de reloj    : %d\n", ciclo - 1);
     |        system("pause");
     |        return 0;
     |    }
     |---------------------------------------------------------------------------------------------
-
-
-
-
