@@ -5,16 +5,8 @@
 // Equipo: Carlos Ivan Becerra Quintero - 25110102
 // =========================================================================
 //
-// COMO USAR EL PROGRAMA:
-//   Escriba un dato  + ENTER  -> queda como dato pendiente
-//   Escriba '@'     + ENTER  -> guarda el dato pendiente en la lista
-//   Escriba un numero + ENTER -> queda como dato pendiente
-//   Escriba '#'     + ENTER  -> lee lista[numero pendiente]
-//   Escriba '$'     + ENTER  -> muestra toda la lista
-//   Escriba '!'     + ENTER  -> termina el programa
-//
 // MAPA DE MEMORIA RAM (65536 posiciones, 1 byte c/u):
-//   0x0000 - 0x000F : Reservado (EBP = 0 siempre)
+//   0x0000 - 0x000F : Reservado
 //   0x0010 - 0x010F : CHAR MAP  - tabla ASCII 0-255 hardcodeada
 //   0x0110 - 0x020F : BUFFER    - entrada actual del teclado
 //   0x0210 - 0x030F : PENDING   - ultimo dato esperando comando
@@ -148,11 +140,21 @@ void ADD(int &dest, int valor)
     EIP++;
 }
 
-// MUL: multiplica. En x86 MUL usa EAX implicito siempre.
-void MUL(int &dest, int valor)
+// XCHG: intercambia dos registros. Instruccion x86 real.
+void XCHG(int &a, int &b)
 {
-    dest *= valor;
-    ZF = (dest == 0) ? 1 : 0;
+    int tmp = a;
+    a = b;
+    b = tmp;
+    EIP++;
+}
+
+// MUL: en x86 real MUL solo recibe UN operando.
+// Multiplica EAX por ese operando. Resultado SIEMPRE en EAX.
+void MUL(int valor)
+{
+    EAX *= valor;
+    ZF = (EAX == 0) ? 1 : 0;
     EIP++;
 }
 
@@ -447,9 +449,9 @@ int main()
             break;
 
         case 0x8034:
-            // Si terminador -> fin del PARSE_LOOP, salta a 0x8039.
-            JE(0x8039);
-            imprimir_fila(eip_actual, "JE 0x8039");
+            // Si terminador -> fin del PARSE_LOOP, salta a 0x803A (antes 0x8039).
+            JE(0x803A);
+            imprimir_fila(eip_actual, "JE 0x803A");
             break;
 
         case 0x8035:
@@ -459,50 +461,56 @@ int main()
             break;
 
         case 0x8036:
-            // ECX = ECX * 10: desplaza el acumulador una posicion decimal.
-            MUL(ECX, 10);
-            imprimir_fila(eip_actual, "MUL ECX,10");
+            // XCHG EAX, ECX: EAX <- acumulador, ECX <- digito actual.
+            // Necesario para que MUL opere sobre EAX.
+            XCHG(EAX, ECX);
+            imprimir_fila(eip_actual, "XCHG EAX,ECX");
             break;
 
         case 0x8037:
-            // ECX = ECX + EAX: agrega el digito actual al acumulador.
+            // MUL 10: EAX = EAX * 10. Un solo operando, resultado en EAX. x86 real.
+            MUL(10);
+            imprimir_fila(eip_actual, "MUL 10");
+            break;
+
+        case 0x8038:
+            // ECX = ECX + EAX: digito + (acumulador*10) = nuevo acumulador en ECX.
             ADD(ECX, EAX);
             imprimir_fila(eip_actual, "ADD ECX,EAX");
             break;
 
-        case 0x8038:
+        case 0x8039:
             // ESI += 1: avanza al siguiente char de PENDING.
             ADD(ESI, 1);
             imprimir_fila(eip_actual, "ADD ESI,1");
             break;
 
-        case 0x8038 + 1: // 0x8039
+        case 0x803A:
             // Fin del PARSE_LOOP. ECX = indice entero.
-            // EAX = ELEM_SIZE * ECX = offset en bytes.
+            // EAX = ELEM_SIZE (base del calculo de offset).
             MOV(EAX, ELEM_SIZE);
             imprimir_fila(eip_actual, "MOV EAX,0x10");
             break;
 
-        case 0x803A:
-            // EAX = EAX * ECX = offset en bytes desde LIST_BASE.
-            // MUL en x86 usa EAX como operando implicito siempre.
-            MUL(EAX, ECX);
-            imprimir_fila(eip_actual, "MUL EAX,ECX");
+        case 0x803B:
+            // MUL ECX: EAX = EAX * ECX = offset en bytes. Un operando, resultado en EAX.
+            MUL(ECX);
+            imprimir_fila(eip_actual, "MUL ECX");
             break;
 
-        case 0x803B:
+        case 0x803C:
             // EAX = LIST_BASE + offset = direccion exacta del elemento.
             ADD(EAX, LIST_BASE);
             imprimir_fila(eip_actual, "ADD EAX,0x0310");
             break;
 
-        case 0x803C:
+        case 0x803D:
             // CALL INT_PRINT: muestra el elemento en RAM[EAX] via MAR/MBR.
-            CALL(0xC000, 0x803D);
+            CALL(0xC000, 0x803E);
             imprimir_fila(eip_actual, "CALL 0xC000");
             break;
 
-        case 0x803D:
+        case 0x803E:
             JMP(0x8000);
             imprimir_fila(eip_actual, "JMP 0x8000");
             break;
